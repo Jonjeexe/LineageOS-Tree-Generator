@@ -1,0 +1,99 @@
+name: Generate Device Tree (Velosh Super Guide) 5
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-tree:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout repo
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Setup Python
+    - name: Setup Python 3.8
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.8'
+
+    # Install required tools
+    - name: Install required tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip tree build-essential python3 python3-pip python3-setuptools curl
+
+    # Download Stock ROM
+    - name: Download Stock ROM
+      run: |
+        echo "Downloading Stock ROM..."
+        gdown "https://drive.google.com/uc?id=1-65PV4enM35j72dhMa4STSMwLNdqR-NV" -O stock_rom.zip
+
+    # Unzip Stock ROM
+    - name: Unzip Stock ROM
+      run: unzip stock_rom.zip -d stock_rom
+
+    # Show extracted files
+    - name: Show extracted files
+      run: tree stock_rom
+
+    # Clone Velosh Super_Guide tools
+    - name: Clone Velosh Super_Guide tools
+      run: |
+        git clone https://github.com/VeloshGSIs/Super_Guide.git super_tools
+        chmod +x super_tools/imjtool
+        chmod +x super_tools/lpunpack
+
+    # Handle super.img (Dynamic Path)
+    - name: Handle super.img (extract partitions)
+      run: |
+        super_path=$(find stock_rom -type f -name "super.img" | head -n1)
+        if [ -f "$super_path" ]; then
+          echo "Found super.img at $super_path"
+          cd super_tools
+
+          # Check if sparse
+          if file "$super_path" | grep -q "sparse"; then
+            echo "Super.img is sparse. Converting..."
+            ./imjtool "$super_path" extract
+            mv "$super_path" "$super_path-old"
+            mv extracted/* "$(dirname "$super_path")/"
+            mv "$(dirname "$super_path")/super.img_sparse" "$super_path"
+          fi
+
+          cd ..
+
+          # Extract partitions
+          ./super_tools/lpunpack --partition=system "$super_path" "$(dirname "$super_path")/"
+          ./super_tools/lpunpack --partition=odm "$super_path" "$(dirname "$super_path")/"
+          ./super_tools/lpunpack --partition=product "$super_path" "$(dirname "$super_path")/"
+          ./super_tools/lpunpack --partition=vendor "$super_path" "$(dirname "$super_path")/"
+        else
+          echo "super.img not found!"
+          exit 1
+        fi
+
+    # Clone aospdtgen
+    - name: Clone aospdtgen repository
+      run: |
+        git clone https://github.com/Jonjeexe/aospdtgen.git
+        cd aospdtgen
+        pip install .
+
+    # Generate device tree
+    - name: Generate device tree
+      run: |
+        python3 -m aospdtgen ../stock_rom -o output
+
+    # Zip device tree
+    - name: Zip device tree
+      run: zip -r device_tree.zip output/
+
+    # Send device tree to Telegram
+    - name: Send device tree to Telegram
+      run: |
+        curl -F chat_id=1910625218 \
+             -F document=@device_tree.zip \
+             "https://api.telegram.org/bot7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-Q/sendDocument"
+             
