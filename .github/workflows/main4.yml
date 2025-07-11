@@ -1,0 +1,78 @@
+name: Generate Device Tree (Fixed Super.img) 4
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-tree:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Python
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      # Install dependencies
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip tree python3 python3-pip python3-setuptools lz4 simg2img
+          python3 -m pip install --upgrade pip gdown extract_android_super_image
+
+      # Download Stock ROM
+      - name: Download Stock ROM
+        run: |
+          echo "Downloading Stock ROM..."
+          gdown "https://drive.google.com/uc?id=1-65PV4enM35j72dhMa4STSMwLNdqR-NV" -O stock_rom.zip
+
+      # Unzip Stock ROM
+      - name: Unzip Stock ROM
+        run: unzip stock_rom.zip -d stock_rom
+
+      # Show extracted files
+      - name: Show extracted files
+        run: tree stock_rom
+
+      # Find and unpack super.img
+      - name: Unpack super.img
+        run: |
+          super_path=$(find stock_rom -name "super.img" | head -n 1)
+          if [ -f "$super_path" ]; then
+            echo "Found super.img at $super_path"
+            mkdir -p stock_rom/super_unpack
+            python3 -m extract_android_super_image "$super_path" stock_rom/super_unpack
+            echo "super.img unpacked!"
+            # Move extracted system/vendor images back to stock_rom/
+            find stock_rom/super_unpack -type f -name "*.img" -exec mv {} stock_rom/ \;
+          else
+            echo "No super.img found. Skipping unpack."
+          fi
+
+      # Clone aospdtgen
+      - name: Clone aospdtgen repository
+        run: |
+          git clone https://github.com/Jonjeexe/aospdtgen.git
+          cd aospdtgen
+          pip install .
+
+      # Generate device tree
+      - name: Generate device tree
+        run: |
+          python3 -m aospdtgen ../stock_rom -o output
+
+      # Zip device tree
+      - name: Zip device tree
+        run: zip -r device_tree.zip output/
+
+      # Send to Telegram
+      - name: Send device tree to Telegram
+        run: |
+          curl -F chat_id=1910625218 \
+               -F document=@device_tree.zip \
+               "https://api.telegram.org/bot7863915048:AAG0PjWioCIeIlP9kDdvsTDkKfJ2J57dR-Q/sendDocument"
