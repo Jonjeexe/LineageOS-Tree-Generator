@@ -1,0 +1,35 @@
+name: Upload Stock ROM to GitHub Release
+
+on:
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  upload-rom:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
+          python3 -m pip install --upgrade pip gdown
+
+      - name: Download Stock ROM from Google Drive
+        run: |
+          echo "Downloading Stock ROM..."
+          gdown "https://drive.google.com/uc?id=1-65PV4enM35j72dhMa4STSMwLNdqR-NV" -O stock_rom.zip
+          echo "Download completed."
+
+      - name: Upload Stock ROM to GitHub Release
+        run: |
+          echo "Uploading to GitHub Release..."
+          gh release create stock-rom-v1 stock_rom.zip \
+            --repo Jonjeexe/LineageOS-Tree-Generator \
+            --title "Stock ROM v1" \
+            --notes "Stock ROM uploaded from Google Drive for future workflows."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          
